@@ -3,9 +3,20 @@ import numpy as np
 import streamlit as st
 from pathlib import Path
 
-DATA_PATH = Path(__file__).parent / "data" / "telco_churn.csv"
+DATA_DIR = Path(__file__).parent / "data"
 
-_TARGET_ALIASES = {"churn", "churned", "is_churn", "target", "label", "attrition", "left", "exited"}
+SAMPLE_DATASETS = {
+    "Telco Churn (7K customers)": "telco_churn.csv",
+    "Bank Churn (10K customers)": "bank_churn.csv",
+    "Streaming Churn (15K customers)": "streaming_churn.csv",
+    "Netflix Churn (1K customers)": "netflix_large_user_data.xlsx",
+    "Spotify Churn (8K customers)": "spotify_churn_dataset.csv",
+}
+
+_TARGET_ALIASES = {
+    "churn", "churned", "is_churn", "is_churned", "target", "label",
+    "attrition", "left", "exited",
+}
 
 
 def _detect_target(df):
@@ -15,16 +26,19 @@ def _detect_target(df):
     for col in df.columns:
         if "churn" in col.lower():
             return col
+    for col in df.columns:
+        if "exit" in col.lower() or "attrit" in col.lower() or "left" in col.lower():
+            return col
     return None
 
 
 def _detect_id_cols(df):
     id_cols = []
     for col in df.columns:
-        low = col.lower().strip()
+        low = col.lower().strip().replace(" ", "_")
         if low.endswith("id") or low == "id" or low.endswith("_id"):
             id_cols.append(col)
-        elif low in ("rownumber", "row_number", "index", "row"):
+        elif low in ("rownumber", "row_number", "index", "row", "surname"):
             id_cols.append(col)
         elif df[col].nunique() == len(df) and df[col].dtype == "object":
             id_cols.append(col)
@@ -46,14 +60,52 @@ def _classify_columns(df, target_col, id_cols):
     return cat_cols, num_cols
 
 
+def _read_file(path_or_buffer, file_name: str = ""):
+    """Read a file based on its extension."""
+    name = file_name.lower() if file_name else ""
+    if hasattr(path_or_buffer, "name"):
+        name = path_or_buffer.name.lower()
+
+    if name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(path_or_buffer, engine="openpyxl")
+    if name.endswith(".json"):
+        return pd.read_json(path_or_buffer)
+    if name.endswith((".parquet", ".pq")):
+        return pd.read_parquet(path_or_buffer)
+    return pd.read_csv(path_or_buffer)
+
+
 @st.cache_data
-def load_data(uploaded_file=None):
+def load_data(uploaded_file=None, sample_name: str = ""):
     if uploaded_file is not None:
-        return pd.read_csv(uploaded_file)
-    if DATA_PATH.exists():
-        return pd.read_csv(DATA_PATH)
-    st.error("No dataset found. Please upload a CSV file.")
+        return _read_file(uploaded_file)
+
+    if sample_name and sample_name in SAMPLE_DATASETS:
+        fpath = DATA_DIR / SAMPLE_DATASETS[sample_name]
+        if fpath.exists():
+            return _read_file(fpath, fpath.name)
+
+    default = DATA_DIR / "telco_churn.csv"
+    if default.exists():
+        return pd.read_csv(default)
+
+    st.error("No dataset found. Please upload a file or select a sample.")
     return None
+
+
+@st.cache_data
+def load_from_sql(connection_string: str, query: str):
+    """Load data from a SQL database."""
+    try:
+        from sqlalchemy import create_engine
+        engine = create_engine(connection_string)
+        return pd.read_sql(query, engine)
+    except ImportError:
+        st.error("sqlalchemy is not installed. Run `pip install sqlalchemy`.")
+        return None
+    except Exception as e:
+        st.error(f"SQL connection error: {e}")
+        return None
 
 
 @st.cache_data
@@ -62,11 +114,10 @@ def preprocess_data(df):
 
     target_col = _detect_target(df)
     if target_col is None:
-        st.error("Could not find a churn/target column. Make sure your CSV has a column "
-                 "named 'Churn', 'churned', 'target', 'attrition', or similar.")
+        st.error("Could not find a churn/target column. Make sure your data has a column "
+                 "named 'Churn', 'churned', 'Exited', 'is_churned', 'target', or similar.")
         return None, {}
 
-    # Standardise target → "Churn" with Yes / No
     if target_col != "Churn":
         df.rename(columns={target_col: "Churn"}, inplace=True)
 
@@ -77,20 +128,28 @@ def preprocess_data(df):
     else:
         uniq = set(df["Churn"].dropna().unique())
         if uniq != {"Yes", "No"}:
-            pos = {v for v in uniq if str(v).lower() in ("yes", "1", "true", "churned")}
-            df["Churn"] = df["Churn"].apply(lambda v: "Yes" if v in pos else "No")
+            pos = {v for v in uniq if str(v).lower() in
+                   ("yes", "1", "true", "churned")}
+            df["Churn"] = df["Churn"].apply(
+                lambda v: "Yes" if v in pos else "No"
+            )
 
     id_cols = _detect_id_cols(df)
     df.drop(columns=id_cols, errors="ignore", inplace=True)
 
-    cat_cols, num_cols = _classify_columns(df, "Churn", id_cols)
+    # Drop date/datetime columns (not useful for ML without engineering)
+    date_cols = [c for c in df.columns
+                 if pd.api.types.is_datetime64_any_dtype(df[c])
+                 or ("date" in c.lower() and df[c].dtype == "object")]
+    df.drop(columns=date_cols, errors="ignore", inplace=True)
+
+    cat_cols, num_cols = _classify_columns(df, "Churn", id_cols + date_cols)
 
     for col in num_cols:
         df[col] = pd.to_numeric(df[col], errors="coerce")
         if df[col].isnull().any():
             df[col].fillna(df[col].median(), inplace=True)
 
-    # Convert numeric-looking categoricals (e.g. SeniorCitizen 0/1)
     for col in cat_cols:
         if pd.api.types.is_numeric_dtype(df[col]) and df[col].nunique() == 2:
             vals = sorted(df[col].unique())
@@ -99,6 +158,7 @@ def preprocess_data(df):
     meta = {
         "target": "Churn",
         "id_cols_dropped": id_cols,
+        "date_cols_dropped": date_cols,
         "categorical_cols": [c for c in cat_cols if c in df.columns],
         "numeric_cols": [c for c in num_cols if c in df.columns],
     }
@@ -148,7 +208,6 @@ def get_churn_summary(df, num_cols):
         "churn_rate": churn_rate,
     }
 
-    # Find a monetary / key numeric column for "revenue at risk"
     money_col = None
     for col in num_cols:
         if any(kw in col.lower() for kw in
@@ -165,12 +224,12 @@ def get_churn_summary(df, num_cols):
         summary["avg_money_retained"] = df[df["Churn"] == "No"][money_col].mean()
         summary["revenue_at_risk"] = df[df["Churn"] == "Yes"][money_col].sum()
 
-    # Find a tenure / duration column
     tenure_col = None
     for col in num_cols:
         if any(kw in col.lower() for kw in
                ("tenure", "duration", "months", "lifetime", "age",
-                "days_since", "account_age", "subscription_length")):
+                "days_since", "account_age", "subscription_length",
+                "subscription length")):
             tenure_col = col
             break
 

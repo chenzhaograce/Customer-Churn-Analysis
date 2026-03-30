@@ -4,8 +4,8 @@ import numpy as np
 
 from config import CUSTOM_CSS
 from data_processor import (
-    load_data, preprocess_data, get_encoded_data,
-    get_churn_summary, get_categorical_churn_rates,
+    load_data, load_from_sql, preprocess_data, get_encoded_data,
+    get_churn_summary, get_categorical_churn_rates, SAMPLE_DATASETS,
 )
 import charts
 from ml_models import (
@@ -34,12 +34,44 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("#### Data Source")
-    data_source = st.radio("Choose data source:", ["Sample Dataset", "Upload CSV"],
-                           label_visibility="collapsed")
+    data_source = st.radio(
+        "Choose data source:",
+        ["Sample Dataset", "Upload File", "SQL Database"],
+        label_visibility="collapsed",
+    )
 
     uploaded_file = None
-    if data_source == "Upload CSV":
-        uploaded_file = st.file_uploader("Upload your CSV", type=["csv"])
+    sample_name = ""
+    sql_df = None
+
+    if data_source == "Sample Dataset":
+        sample_name = st.selectbox(
+            "Select dataset:",
+            list(SAMPLE_DATASETS.keys()),
+            key="sample_select",
+        )
+    elif data_source == "Upload File":
+        uploaded_file = st.file_uploader(
+            "Upload your data file",
+            type=["csv", "xlsx", "xls", "json", "parquet"],
+        )
+    else:
+        st.caption("Connect to any SQL database (SQLite, PostgreSQL, MySQL, etc.)")
+        conn_str = st.text_input(
+            "Connection string",
+            placeholder="sqlite:///data.db  or  postgresql://user:pass@host/db",
+        )
+        sql_query = st.text_input(
+            "SQL query",
+            placeholder="SELECT * FROM customers",
+        )
+        if conn_str and sql_query and st.button("🔌 Connect", type="primary"):
+            sql_df = load_from_sql(conn_str, sql_query)
+            if sql_df is not None:
+                st.session_state["sql_data"] = sql_df
+                st.success(f"Loaded {len(sql_df):,} rows")
+        if "sql_data" in st.session_state:
+            sql_df = st.session_state["sql_data"]
 
     st.markdown("---")
     st.markdown("#### 🤖 LLM Insights")
@@ -63,9 +95,15 @@ with st.sidebar:
 
 # ── Load & Preprocess Data ────────────────────────────────────────────────
 
-raw_df = load_data(uploaded_file)
+if sql_df is not None:
+    raw_df = sql_df
+elif uploaded_file is not None:
+    raw_df = load_data(uploaded_file=uploaded_file)
+else:
+    raw_df = load_data(sample_name=sample_name)
+
 if raw_df is None:
-    st.warning("Please upload a CSV file to get started.")
+    st.warning("Please upload a file, select a sample dataset, or connect to a database.")
     st.stop()
 
 result = preprocess_data(raw_df)
