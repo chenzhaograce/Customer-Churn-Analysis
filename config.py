@@ -15,29 +15,10 @@ COLORS = {
 CHURN_COLORS = {"Yes": COLORS["churned"], "No": COLORS["retained"]}
 CHURN_COLOR_SEQ = [COLORS["retained"], COLORS["churned"]]
 
-# 10-color categorical sequence for multi-model / multi-series charts
 VIVID_CATEGORICAL = [
     "#4E79A7", "#F28E2C", "#E15759", "#76B7B2", "#59A14F",
     "#EDC949", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AB",
 ]
-
-CATEGORICAL_COLS = [
-    "gender", "SeniorCitizen", "Partner", "Dependents",
-    "PhoneService", "MultipleLines", "InternetService",
-    "OnlineSecurity", "OnlineBackup", "DeviceProtection",
-    "TechSupport", "StreamingTV", "StreamingMovies",
-    "Contract", "PaperlessBilling", "PaymentMethod",
-]
-
-NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
-
-DEMOGRAPHIC_COLS = ["gender", "SeniorCitizen", "Partner", "Dependents"]
-SERVICE_COLS = [
-    "PhoneService", "MultipleLines", "InternetService",
-    "OnlineSecurity", "OnlineBackup", "DeviceProtection",
-    "TechSupport", "StreamingTV", "StreamingMovies",
-]
-ACCOUNT_COLS = ["Contract", "PaperlessBilling", "PaymentMethod"]
 
 CUSTOM_CSS = """
 <style>

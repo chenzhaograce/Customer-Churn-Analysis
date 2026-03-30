@@ -13,12 +13,12 @@ try:
 except ImportError:
     HAS_GEMINI = False
 
-SYSTEM_PROMPT = """You are a senior data analyst specializing in customer churn analysis for 
-telecommunications companies. You provide clear, actionable, and data-driven insights. 
-Use specific numbers from the data provided. Structure your responses with headers and 
-bullet points for readability. Be concise but thorough.
+SYSTEM_PROMPT = """You are a senior data analyst specializing in customer churn analysis.
+You provide clear, actionable, and data-driven insights. Use specific numbers from the
+data provided. Structure your responses with headers and bullet points for readability.
+Be concise but thorough.
 
-IMPORTANT: Do NOT start with preambles like "Of course", "Sure", "Here is", 
+IMPORTANT: Do NOT start with preambles like "Of course", "Sure", "Here is",
 "Certainly", or any conversational opener. Jump straight into the analysis content.
 Output your response in clean HTML format using <h3>, <h4>, <b>, <ul>, <li>, <p> tags.
 Do NOT use markdown syntax (no **, ##, or - bullets). Use HTML tags only."""
@@ -64,14 +64,32 @@ def _call_gemini(api_key: str, prompt: str, max_tokens: int = 1500) -> str:
 
 def _call_llm(api_key: str, prompt: str, max_tokens: int = 1500,
               provider: str = "openai") -> str:
+    tokens = max_tokens if provider == "openai" else max(max_tokens, 8192)
     if provider == "gemini":
-        return _call_gemini(api_key, prompt, max_tokens)
-    return _call_openai(api_key, prompt, max_tokens)
+        return _call_gemini(api_key, prompt, tokens)
+    return _call_openai(api_key, prompt, tokens)
 
+
+# ── Generic insight functions ──────────────────────────────────────────────
 
 def get_executive_summary(api_key: str, summary: dict, df_info: str,
                           provider: str = "openai") -> str:
-    prompt = f"""Analyze this telecom customer churn dataset and provide an executive summary.
+    money_part = ""
+    if "money_col" in summary:
+        money_part = f"""
+- Key Metric Column: {summary['money_col']}
+- Avg {summary['money_col']} (Churned): {summary['avg_money_churned']:.2f}
+- Avg {summary['money_col']} (Retained): {summary['avg_money_retained']:.2f}
+- Total at Risk: {summary['revenue_at_risk']:,.2f}"""
+
+    tenure_part = ""
+    if "tenure_col" in summary:
+        tenure_part = f"""
+- Duration Column: {summary['tenure_col']}
+- Avg {summary['tenure_col']} (Churned): {summary['avg_tenure_churned']:.1f}
+- Avg {summary['tenure_col']} (Retained): {summary['avg_tenure_retained']:.1f}"""
+
+    prompt = f"""Analyze this customer churn dataset and provide an executive summary.
 
 Dataset Overview:
 {df_info}
@@ -79,12 +97,7 @@ Dataset Overview:
 Key Metrics:
 - Total Customers: {summary['total_customers']:,}
 - Churned Customers: {summary['churned']:,}
-- Churn Rate: {summary['churn_rate']:.1f}%
-- Avg Monthly Charges (Churned): ${summary['avg_monthly_churned']:.2f}
-- Avg Monthly Charges (Retained): ${summary['avg_monthly_retained']:.2f}
-- Avg Tenure (Churned): {summary['avg_tenure_churned']:.1f} months
-- Avg Tenure (Retained): {summary['avg_tenure_retained']:.1f} months
-- Monthly Revenue at Risk: ${summary['revenue_at_risk']:,.2f}
+- Churn Rate: {summary['churn_rate']:.1f}%{money_part}{tenure_part}
 
 Provide:
 1. Executive Summary - 2-3 sentence overview of the churn situation
@@ -94,44 +107,30 @@ Provide:
     return _call_llm(api_key, prompt, max_tokens=2000, provider=provider)
 
 
-def get_demographic_insights(api_key: str, demographic_data: str,
+def get_categorical_insights(api_key: str, cat_data: str,
                              provider: str = "openai") -> str:
-    prompt = f"""Analyze these customer demographic patterns related to churn:
+    prompt = f"""Analyze these categorical feature patterns related to customer churn:
 
-{demographic_data}
+{cat_data}
 
 Provide insights on:
-1. Demographic Risk Profiles - Which demographic segments churn most?
+1. Risk Profiles - Which segments churn most?
 2. Key Findings - Surprising or notable patterns
 3. Targeted Recommendations - Segment-specific retention strategies"""
-    return _call_llm(api_key, prompt, provider=provider)
+    return _call_llm(api_key, prompt, max_tokens=2000, provider=provider)
 
 
-def get_service_insights(api_key: str, service_data: str,
-                         provider: str = "openai") -> str:
-    prompt = f"""Analyze these telecom service subscription patterns and their relationship to churn:
+def get_numerical_insights(api_key: str, num_data: str,
+                           provider: str = "openai") -> str:
+    prompt = f"""Analyze these numerical feature patterns related to customer churn:
 
-{service_data}
-
-Provide insights on:
-1. Service Impact Analysis - Which services are most associated with churn/retention?
-2. Bundle Opportunities - Service combinations that could reduce churn
-3. Strategic Recommendations - Service-related retention strategies"""
-    return _call_llm(api_key, prompt, provider=provider)
-
-
-def get_billing_insights(api_key: str, billing_data: str,
-                         provider: str = "openai") -> str:
-    prompt = f"""Analyze these billing and contract patterns related to customer churn:
-
-{billing_data}
+{num_data}
 
 Provide insights on:
-1. Contract Analysis - How do contract types affect churn?
-2. Pricing Sensitivity - Relationship between charges and churn
-3. Payment Method Patterns - Any concerning payment-related trends
-4. Retention Pricing Strategies - Recommended pricing/contract interventions"""
-    return _call_llm(api_key, prompt, provider=provider)
+1. Value Distribution Analysis - How do key metrics differ between churned and retained?
+2. Threshold Patterns - Are there critical value thresholds associated with churn?
+3. Strategic Recommendations - Data-driven interventions based on these numerical patterns"""
+    return _call_llm(api_key, prompt, max_tokens=2000, provider=provider)
 
 
 def get_model_insights(api_key: str, model_results: dict, feature_importances: dict,
@@ -162,12 +161,11 @@ Provide:
 def get_comprehensive_recommendations(api_key: str, summary: dict,
                                       top_churn_factors: str,
                                       provider: str = "openai") -> str:
-    prompt = f"""Based on comprehensive analysis of telecom customer churn data:
+    prompt = f"""Based on comprehensive analysis of a customer churn dataset:
 
 Churn Overview:
 - Churn Rate: {summary['churn_rate']:.1f}%
 - Customers at Risk: {summary['churned']:,}
-- Revenue at Risk: ${summary['revenue_at_risk']:,.2f}/month
 
 Top Churn Factors:
 {top_churn_factors}

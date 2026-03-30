@@ -22,7 +22,7 @@ def _apply_layout(fig, title=None, **kwargs):
     return fig
 
 
-# ── Dashboard ──────────────────────────────────────────────────────────────
+# ── Generic EDA charts ─────────────────────────────────────────────────────
 
 def churn_donut(df):
     counts = df["Churn"].value_counts().reset_index()
@@ -56,142 +56,65 @@ def churn_rate_by_category(df, col, title=None):
     )
     fig.update_traces(textposition="outside", textfont_size=12)
     fig.update_coloraxes(showscale=False)
-    return _apply_layout(fig, title or f"Churn Rate by {col}", height=max(300, len(rates) * 45 + 100))
+    return _apply_layout(fig, title or f"Churn Rate by {col}",
+                         height=max(300, len(rates) * 45 + 100))
 
 
-# ── Demographics ───────────────────────────────────────────────────────────
-
-def demographic_grid(df):
-    cols = ["gender", "SeniorCitizen", "Partner", "Dependents"]
-    fig = make_subplots(rows=2, cols=2, subplot_titles=[c.replace("_", " ").title() for c in cols])
-
+def categorical_grid(df, cols, title="Categorical Features vs Churn"):
+    """Grid of bar charts showing churn by each categorical column."""
+    n = len(cols)
+    if n == 0:
+        return go.Figure()
+    ncols = min(n, 3)
+    nrows = (n + ncols - 1) // ncols
+    fig = make_subplots(
+        rows=nrows, cols=ncols,
+        subplot_titles=[c.replace("_", " ").title() for c in cols],
+    )
     for i, col in enumerate(cols):
-        r, c = divmod(i, 2)
+        r, c = divmod(i, ncols)
         ct = df.groupby([col, "Churn"]).size().reset_index(name="Count")
         for churn_val in ["No", "Yes"]:
             subset = ct[ct["Churn"] == churn_val]
             fig.add_trace(
                 go.Bar(
-                    x=subset[col], y=subset["Count"], name=churn_val,
+                    x=subset[col].astype(str), y=subset["Count"], name=churn_val,
                     marker_color=CHURN_COLORS[churn_val],
                     showlegend=(i == 0), legendgroup=churn_val,
                     text=subset["Count"], textposition="outside",
                 ),
                 row=r + 1, col=c + 1,
             )
-
-    return _apply_layout(fig, "Customer Demographics vs Churn", height=700, barmode="group")
-
-
-# ── Services ───────────────────────────────────────────────────────────────
-
-def internet_service_chart(df):
-    return churn_by_category(df, "InternetService", "Internet Service Type vs Churn")
+    h = max(400, nrows * 320)
+    return _apply_layout(fig, title, height=h, barmode="group")
 
 
-def services_churn_grid(df):
-    service_cols = [
-        "OnlineSecurity", "OnlineBackup", "DeviceProtection",
-        "TechSupport", "StreamingTV", "StreamingMovies",
-    ]
-    fig = make_subplots(rows=2, cols=3, subplot_titles=service_cols)
-
-    for i, col in enumerate(service_cols):
-        r, c = divmod(i, 3)
-        ct = df.groupby([col, "Churn"]).size().reset_index(name="Count")
-        for churn_val in ["No", "Yes"]:
-            subset = ct[ct["Churn"] == churn_val]
-            fig.add_trace(
-                go.Bar(
-                    x=subset[col], y=subset["Count"], name=churn_val,
-                    marker_color=CHURN_COLORS[churn_val],
-                    showlegend=(i == 0), legendgroup=churn_val,
-                ),
-                row=r + 1, col=c + 1,
-            )
-
-    return _apply_layout(fig, "Add-on Services vs Churn", height=650, barmode="group")
-
-
-def phone_service_chart(df):
-    fig = make_subplots(rows=1, cols=2, subplot_titles=["Phone Service", "Multiple Lines"])
-    for i, col in enumerate(["PhoneService", "MultipleLines"]):
-        ct = df.groupby([col, "Churn"]).size().reset_index(name="Count")
-        for churn_val in ["No", "Yes"]:
-            subset = ct[ct["Churn"] == churn_val]
-            fig.add_trace(
-                go.Bar(
-                    x=subset[col], y=subset["Count"], name=churn_val,
-                    marker_color=CHURN_COLORS[churn_val],
-                    showlegend=(i == 0), legendgroup=churn_val,
-                ),
-                row=1, col=i + 1,
-            )
-    return _apply_layout(fig, "Phone Services vs Churn", height=400, barmode="group")
-
-
-def num_services_chart(df):
-    ct = df.groupby(["NumServices", "Churn"]).size().reset_index(name="Count")
-    fig = px.bar(
-        ct, x="NumServices", y="Count", color="Churn", barmode="group",
-        color_discrete_map=CHURN_COLORS, text_auto=True,
-        labels={"NumServices": "Number of Add-on Services"},
-    )
-    return _apply_layout(fig, "Number of Services Subscribed vs Churn")
-
-
-# ── Billing & Contract ────────────────────────────────────────────────────
-
-def contract_chart(df):
-    return churn_by_category(df, "Contract", "Contract Type vs Churn")
-
-
-def payment_method_chart(df):
-    return churn_rate_by_category(df, "PaymentMethod", "Churn Rate by Payment Method")
-
-
-def billing_chart(df):
-    return churn_by_category(df, "PaperlessBilling", "Paperless Billing vs Churn")
-
-
-def monthly_charges_dist(df):
+def numeric_distribution(df, col, title=None):
+    """Histogram of a numeric column split by Churn."""
     fig = px.histogram(
-        df, x="MonthlyCharges", color="Churn", nbins=40,
+        df, x=col, color="Churn", nbins=40,
         color_discrete_map=CHURN_COLORS, barmode="overlay", opacity=0.7,
         marginal="box",
     )
-    return _apply_layout(fig, "Monthly Charges Distribution by Churn", height=450)
+    return _apply_layout(fig, title or f"{col} Distribution by Churn", height=450)
 
 
-def total_charges_dist(df):
-    fig = px.histogram(
-        df, x="TotalCharges", color="Churn", nbins=40,
-        color_discrete_map=CHURN_COLORS, barmode="overlay", opacity=0.7,
-        marginal="box",
-    )
-    return _apply_layout(fig, "Total Charges Distribution by Churn", height=450)
-
-
-def tenure_dist(df):
-    fig = px.histogram(
-        df, x="tenure", color="Churn", nbins=36,
-        color_discrete_map=CHURN_COLORS, barmode="overlay", opacity=0.7,
-        marginal="box", labels={"tenure": "Tenure (months)"},
-    )
-    return _apply_layout(fig, "Customer Tenure Distribution by Churn", height=450)
-
-
-def tenure_group_chart(df):
-    return churn_rate_by_category(df, "tenure_group", "Churn Rate by Tenure Group")
-
-
-def charges_scatter(df):
+def numeric_scatter(df, col_x, col_y, title=None):
+    """Scatter of two numeric columns coloured by Churn."""
     fig = px.scatter(
-        df, x="tenure", y="MonthlyCharges", color="Churn",
+        df, x=col_x, y=col_y, color="Churn",
         color_discrete_map=CHURN_COLORS, opacity=0.5,
-        labels={"tenure": "Tenure (months)", "MonthlyCharges": "Monthly Charges ($)"},
     )
-    return _apply_layout(fig, "Tenure vs Monthly Charges", height=450)
+    return _apply_layout(fig, title or f"{col_x} vs {col_y}", height=450)
+
+
+def numeric_box(df, col, title=None):
+    """Box plot of a numeric column grouped by Churn."""
+    fig = px.box(
+        df, x="Churn", y=col, color="Churn",
+        color_discrete_map=CHURN_COLORS,
+    )
+    return _apply_layout(fig, title or f"{col} by Churn Status", height=400)
 
 
 # ── Correlation ────────────────────────────────────────────────────────────
@@ -236,7 +159,6 @@ def churn_correlation_bar(df_encoded):
 # ── Model Benchmark ───────────────────────────────────────────────────────
 
 def benchmark_ranking_chart(bench_df, top_n=5):
-    """Horizontal bar chart of composite scores with top-N highlighted."""
     df = bench_df.sort_values("Composite", ascending=True).copy()
     df["Selected"] = df["Rank"] <= top_n
     df["Color"] = df["Selected"].map({True: COLORS["accent"], False: "#cccccc"})
@@ -252,14 +174,13 @@ def benchmark_ranking_chart(bench_df, top_n=5):
 
 
 def benchmark_metrics_chart(bench_df):
-    """Grouped bar chart showing ROC-AUC, F1, PR-AUC per model."""
     df = bench_df.sort_values("Rank")
     melted = df.melt(id_vars=["Model", "Rank"], value_vars=["ROC-AUC", "F1", "PR-AUC"],
                      var_name="Metric", value_name="Score")
     fig = px.bar(
         melted, x="Model", y="Score", color="Metric", barmode="group",
         text=melted["Score"].round(3),
-        color_discrete_sequence=[COLORS["retained"], COLORS["accent"], COLORS["churned"]],  # benchmark
+        color_discrete_sequence=[COLORS["retained"], COLORS["accent"], COLORS["churned"]],
     )
     fig.update_traces(textposition="outside", textfont_size=9)
     fig.update_yaxes(range=[0, 1.1])
@@ -310,7 +231,6 @@ def roc_curves_chart(roc_data):
 
 
 def pr_curves_chart(pr_data):
-    """Precision-Recall curves — more informative than ROC for imbalanced binary."""
     fig = go.Figure()
     colors = VIVID_CATEGORICAL
     for i, (name, prec, rec, ap) in enumerate(pr_data):
@@ -324,7 +244,6 @@ def pr_curves_chart(pr_data):
 
 
 def threshold_analysis_chart(y_true, y_prob, model_name):
-    """Show how Precision, Recall, F1, F2 change across classification thresholds."""
     thresholds = np.linspace(0.05, 0.95, 100)
     y_true = np.array(y_true)
     y_prob = np.array(y_prob)
@@ -343,12 +262,12 @@ def threshold_analysis_chart(y_true, y_prob, model_name):
             "F2":        fbeta_score(y_true, y_pred, beta=2, zero_division=0),
         })
 
-    df = pd.DataFrame(records)
+    tdf = pd.DataFrame(records)
     fig = go.Figure()
     for metric, color in [("Precision", COLORS["retained"]), ("Recall", COLORS["churned"]),
                           ("F1", COLORS["accent"]), ("F2", COLORS["purple"])]:
         fig.add_trace(go.Scatter(
-            x=df["Threshold"], y=df[metric], name=metric,
+            x=tdf["Threshold"], y=tdf[metric], name=metric,
             line=dict(color=color, width=2.5),
         ))
     fig.update_xaxes(title="Classification Threshold")
@@ -357,13 +276,12 @@ def threshold_analysis_chart(y_true, y_prob, model_name):
 
 
 def probability_distribution_chart(y_true, y_prob, model_name, opt_threshold=0.5):
-    """Histogram of predicted probabilities split by actual class."""
-    df = pd.DataFrame({
+    tdf = pd.DataFrame({
         "Probability": y_prob,
         "Actual": ["Churned" if y == 1 else "Retained" for y in y_true],
     })
     fig = px.histogram(
-        df, x="Probability", color="Actual", nbins=50,
+        tdf, x="Probability", color="Actual", nbins=50,
         barmode="overlay", opacity=0.65,
         color_discrete_map={"Churned": COLORS["churned"], "Retained": COLORS["retained"]},
     )
@@ -375,7 +293,6 @@ def probability_distribution_chart(y_true, y_prob, model_name, opt_threshold=0.5
 
 
 def threshold_comparison_chart(threshold_info):
-    """Compare default (0.5) vs optimal threshold across models."""
     rows = []
     for name, info in threshold_info.items():
         for label, metrics in [("Default (0.5)", info["metrics_default"]),
@@ -385,8 +302,8 @@ def threshold_comparison_chart(threshold_info):
                 "F1": metrics["F1"], "Recall (TPR)": metrics["Recall (TPR)"],
                 "Precision": metrics["Precision"],
             })
-    df = pd.DataFrame(rows)
-    melted = df.melt(id_vars=["Model", "Threshold"], var_name="Metric", value_name="Score")
+    tdf = pd.DataFrame(rows)
+    melted = tdf.melt(id_vars=["Model", "Threshold"], var_name="Metric", value_name="Score")
     fig = px.bar(
         melted, x="Model", y="Score", color="Threshold", barmode="group",
         facet_col="Metric", text=melted["Score"].round(3),
@@ -402,8 +319,8 @@ def confusion_matrix_chart(cm, model_name):
     labels = ["Retained", "Churned"]
     fig = px.imshow(
         cm, text_auto=True, x=labels, y=labels,
-        color_continuous_scale=[[0, "#f0f4f8"], [0.5, "#76B7B2"], [1, "#364F6B"]], aspect="equal",
-        labels=dict(x="Predicted", y="Actual"),
+        color_continuous_scale=[[0, "#f0f4f8"], [0.5, "#76B7B2"], [1, "#364F6B"]],
+        aspect="equal", labels=dict(x="Predicted", y="Actual"),
     )
     return _apply_layout(fig, f"Confusion Matrix — {model_name}", height=380, width=420)
 
@@ -414,7 +331,8 @@ def feature_importance_chart(importances, feature_names, model_name):
 
     fig = px.bar(
         imp_df, x="Importance", y="Feature", orientation="h",
-        color="Importance", color_continuous_scale=[[0, "#76B7B2"], [0.5, "#F28E2C"], [1, "#E15759"]],
+        color="Importance",
+        color_continuous_scale=[[0, "#76B7B2"], [0.5, "#F28E2C"], [1, "#E15759"]],
         text=imp_df["Importance"].round(4),
     )
     fig.update_traces(textposition="outside", textfont_size=10)

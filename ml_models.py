@@ -198,7 +198,8 @@ def _binary_metrics(y_true, y_pred, y_prob):
 
 @st.cache_data
 def train_and_evaluate(df_encoded_json, selected_models, test_size=0.2):
-    df_encoded = pd.read_json(pd.io.common.StringIO(df_encoded_json))
+    import io
+    df_encoded = pd.read_json(io.StringIO(df_encoded_json))
     split = prepare_data(df_encoded, test_size)
     if split is None:
         return {}, [], [], {}, {}, [], {}, {}
@@ -286,7 +287,8 @@ def benchmark_models(df_encoded_json, n_folds=5):
     from sklearn.model_selection import StratifiedKFold, cross_val_score
     import time
 
-    df_encoded = pd.read_json(pd.io.common.StringIO(df_encoded_json))
+    import io
+    df_encoded = pd.read_json(io.StringIO(df_encoded_json))
     if "Churn" not in df_encoded.columns:
         return pd.DataFrame()
 

@@ -1,6 +1,6 @@
 # Customer Churn Analysis
 
-An interactive Streamlit application for analyzing and predicting telecom customer churn. Features automated exploratory data analysis, 11 machine learning models with binary classification optimization, and AI-powered insights via OpenAI or Google Gemini.
+An interactive Streamlit application that **automatically analyzes any customer churn dataset**. Upload any CSV with a churn/target column and get instant exploratory analysis, 11 machine learning models with binary classification optimization, and AI-powered insights via OpenAI or Google Gemini.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red)
@@ -8,12 +8,17 @@ An interactive Streamlit application for analyzing and predicting telecom custom
 
 ## Features
 
+### Works with Any Churn Dataset
+- **Auto-detects** target column (`Churn`, `churned`, `Exited`, `attrition`, `target`, etc.)
+- **Auto-detects** and drops ID columns (`customerID`, `RowNumber`, etc.)
+- **Auto-classifies** features as categorical or numerical
+- **Dynamically builds** all charts, metrics, and insights based on your data
+
 ### Exploratory Data Analysis
-- **Dashboard** — Key metrics, churn distribution, tenure and charge analysis at a glance
+- **Dashboard** — Auto-generated KPIs, churn distribution, top drivers
 - **Data Explorer** — Browse raw data, data types, missing values, and summary statistics
-- **Demographics** — Churn patterns by gender, senior citizen status, partner, and dependents
-- **Services** — Impact of internet service type, add-ons (security, backup, tech support), and streaming services
-- **Billing & Contract** — Contract type, payment method, monthly/total charges vs. churn
+- **Categorical Analysis** — Churn rates by every detected categorical feature
+- **Numerical Analysis** — Distributions, box plots, scatter plots for all numerical features
 - **Correlation** — Heatmap of feature correlations with the churn target
 
 ### Predictive Modeling
@@ -66,8 +71,8 @@ To enable AI-powered insights, enter your API key in the sidebar:
 
 ```
 ├── app.py              # Main Streamlit application
-├── config.py           # Color palette, CSS, column definitions
-├── data_processor.py   # Data loading, preprocessing, feature engineering
+├── config.py           # Color palette, CSS styling
+├── data_processor.py   # Auto-detection, loading, preprocessing
 ├── charts.py           # Plotly visualization functions
 ├── ml_models.py        # ML model registry, training, evaluation
 ├── llm_insights.py     # OpenAI & Gemini API integration
@@ -76,11 +81,20 @@ To enable AI-powered insights, enter your API key in the sidebar:
     └── telco_churn.csv  # Sample Telco Customer Churn dataset
 ```
 
-## Dataset
+## Dataset Compatibility
 
-The included sample dataset is the [Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) dataset from Kaggle, containing 7,043 customer records with 21 features including demographics, services, account information, and churn status.
+The app works with **any CSV** containing a binary churn/target column. It auto-detects:
+- **Target columns** named: `Churn`, `churned`, `Exited`, `attrition`, `target`, `label`, `left`
+- **Target values**: `Yes/No`, `1/0`, `True/False`, or `Churned/Retained`
+- **ID columns**: automatically detected and dropped
 
-You can also upload your own CSV via the sidebar — the app expects a `Churn` column with `Yes`/`No` values.
+### Included Sample
+The bundled dataset is [Telco Customer Churn](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) (7,043 customers, 21 features).
+
+### Tested With
+- Telco Customer Churn (telecom)
+- [Bank Customer Churn](https://github.com/selva86/datasets/blob/master/Churn_Modelling.csv) (banking, `Exited` column)
+- Any subscription/SaaS/streaming churn dataset
 
 ## Tech Stack
 
