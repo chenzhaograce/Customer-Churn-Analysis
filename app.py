@@ -5,7 +5,8 @@ import numpy as np
 from config import CUSTOM_CSS
 from data_processor import (
     load_data, load_from_sql, preprocess_data, get_encoded_data,
-    get_churn_summary, get_categorical_churn_rates, SAMPLE_DATASETS,
+    get_churn_summary, get_categorical_churn_rates, apply_column_overrides,
+    _detect_target, SAMPLE_DATASETS,
 )
 import charts
 from ml_models import (
@@ -106,13 +107,19 @@ if raw_df is None:
     st.warning("Please upload a file, select a sample dataset, or connect to a database.")
     st.stop()
 
-result = preprocess_data(raw_df)
+target_override = st.session_state.get("target_override", None)
+result = preprocess_data(raw_df, target_override=target_override)
 if result is None or result[0] is None:
     st.stop()
 
 df, meta = result
-cat_cols = meta["categorical_cols"]
-num_cols = meta["numeric_cols"]
+cat_cols = list(meta["categorical_cols"])
+num_cols = list(meta["numeric_cols"])
+
+col_overrides = st.session_state.get("col_overrides", {})
+bin_config = st.session_state.get("bin_config", {})
+if col_overrides:
+    df, cat_cols, num_cols = apply_column_overrides(df, meta, col_overrides, bin_config)
 
 df_encoded = get_encoded_data(df, cat_cols, num_cols)
 summary = get_churn_summary(df, num_cols)
@@ -131,6 +138,7 @@ st.markdown("---")
 # ── Tabs ───────────────────────────────────────────────────────────────────
 
 tabs = st.tabs([
+    "⚙️ Data Settings",
     "🏠 Dashboard",
     "🔍 Data Explorer",
     "📊 Categorical Analysis",
@@ -141,10 +149,134 @@ tabs = st.tabs([
 ])
 
 # ══════════════════════════════════════════════════════════════════════════
-# TAB 1: DASHBOARD
+# TAB 0: DATA SETTINGS
 # ══════════════════════════════════════════════════════════════════════════
 
 with tabs[0]:
+    st.markdown("### Data Configuration")
+    st.markdown("Adjust target variable, column types, and binning before analysis.")
+
+    # --- Target Variable Selector ---
+    st.markdown("#### Target Variable")
+    all_columns = list(raw_df.columns)
+    auto_target = _detect_target(raw_df)
+    current_target = st.session_state.get("target_override", auto_target)
+    default_idx = all_columns.index(current_target) if current_target in all_columns else 0
+
+    new_target = st.selectbox(
+        "Select the target (churn) column:",
+        all_columns,
+        index=default_idx,
+        key="target_selector",
+        help="The column indicating whether a customer churned. "
+             "Auto-detected columns are highlighted.",
+    )
+    if auto_target:
+        st.caption(f"Auto-detected target: **{auto_target}**")
+
+    st.markdown("---")
+
+    # --- Column Type Overrides ---
+    st.markdown("#### Column Types")
+    st.markdown("Override auto-detected types. Columns marked **Categorical** are used "
+                "for group-based analysis; **Numerical** columns are used for distributions "
+                "and correlations.")
+
+    feature_cols = [c for c in df.columns if c != "Churn"]
+    _existing_overrides = st.session_state.get("col_overrides", {})
+    _new_overrides = {}
+    _new_bin_config = {}
+
+    n_features = len(feature_cols)
+    cols_per_row = 2
+    for row_start in range(0, n_features, cols_per_row):
+        row_items = feature_cols[row_start:row_start + cols_per_row]
+        ui_cols = st.columns(cols_per_row)
+        for idx, col_name in enumerate(row_items):
+            with ui_cols[idx]:
+                auto_type = "cat" if col_name in meta["categorical_cols"] else "num"
+                current_type = _existing_overrides.get(col_name, auto_type)
+                nuniq = df[col_name].nunique() if col_name in df.columns else 0
+                dtype_str = str(df[col_name].dtype) if col_name in df.columns else "?"
+
+                label_suffix = " *(auto: cat)*" if auto_type == "cat" else " *(auto: num)*"
+                choice = st.radio(
+                    f"**{col_name}** ({nuniq} unique, {dtype_str}){label_suffix}",
+                    ["Categorical", "Numerical"],
+                    index=0 if current_type == "cat" else 1,
+                    horizontal=True,
+                    key=f"coltype_{col_name}",
+                )
+
+                chosen = "cat" if choice == "Categorical" else "num"
+                if chosen != auto_type:
+                    _new_overrides[col_name] = chosen
+
+                if chosen == "cat" and auto_type == "num":
+                    bin_method = st.radio(
+                        f"Binning for {col_name}:",
+                        ["No binning (use raw values)", "Auto (quartiles)", "Custom ranges"],
+                        key=f"bin_{col_name}",
+                        horizontal=True,
+                    )
+                    if bin_method == "Auto (quartiles)":
+                        _new_bin_config[col_name] = {"method": "quartile"}
+                    elif bin_method == "Custom ranges":
+                        edges_str = st.text_input(
+                            f"Bin edges for {col_name} (comma-separated):",
+                            placeholder="e.g. 0, 10, 20, 50, 100",
+                            key=f"edges_{col_name}",
+                        )
+                        if edges_str:
+                            try:
+                                edges = [float(x.strip()) for x in edges_str.split(",")]
+                                _new_bin_config[col_name] = {
+                                    "method": "custom", "edges": edges
+                                }
+                                st.caption(
+                                    f"Bins: {', '.join(f'{edges[i]}-{edges[i+1]}' for i in range(len(edges)-1))}"
+                                )
+                            except ValueError:
+                                st.error("Enter valid numbers separated by commas.")
+
+    st.markdown("---")
+
+    if st.button("✅ Apply Settings", type="primary", use_container_width=True):
+        settings_changed = (
+            new_target != st.session_state.get("target_override", auto_target)
+            or _new_overrides != st.session_state.get("col_overrides", {})
+            or _new_bin_config != st.session_state.get("bin_config", {})
+        )
+
+        st.session_state["target_override"] = new_target
+        st.session_state["col_overrides"] = _new_overrides
+        st.session_state["bin_config"] = _new_bin_config
+
+        if settings_changed:
+            for key in list(st.session_state.keys()):
+                if key.startswith("llm_") or key in (
+                    "benchmark", "model_results", "roc_data", "pr_data",
+                    "confusion_matrices", "feature_importances",
+                    "feature_names", "reports", "threshold_info",
+                ):
+                    del st.session_state[key]
+
+        st.rerun()
+
+    st.markdown(
+        '<div class="insight-box">'
+        "<b>Tip:</b> After changing settings, click <b>Apply Settings</b> to reprocess. "
+        "Existing model results and LLM insights will be regenerated with the new configuration."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# TAB 1: DASHBOARD
+# ══════════════════════════════════════════════════════════════════════════
+
+with tabs[1]:
     st.markdown("### Key Performance Indicators")
 
     kpi_cards = [
@@ -254,7 +386,7 @@ with tabs[0]:
 # TAB 2: DATA EXPLORER
 # ══════════════════════════════════════════════════════════════════════════
 
-with tabs[1]:
+with tabs[2]:
     st.markdown("### Data Explorer")
 
     sub1, sub2, sub3 = st.tabs(["📋 Raw Data", "📊 Statistics", "📐 Distributions"])
@@ -324,7 +456,7 @@ with tabs[1]:
 # TAB 3: CATEGORICAL ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════
 
-with tabs[2]:
+with tabs[3]:
     st.markdown("### Categorical Feature Analysis")
     st.markdown("How each categorical feature relates to churn.")
 
@@ -395,7 +527,7 @@ with tabs[2]:
 # TAB 4: NUMERICAL ANALYSIS
 # ══════════════════════════════════════════════════════════════════════════
 
-with tabs[3]:
+with tabs[4]:
     st.markdown("### Numerical Feature Analysis")
     st.markdown("Distribution and relationship of numerical features with churn.")
 
@@ -471,7 +603,7 @@ with tabs[3]:
 # TAB 5: CORRELATION
 # ══════════════════════════════════════════════════════════════════════════
 
-with tabs[4]:
+with tabs[5]:
     st.markdown("### Feature Correlation Analysis")
     st.markdown("Understanding relationships between features and churn.")
 
@@ -499,7 +631,7 @@ with tabs[4]:
 # TAB 6: PREDICTIVE MODELS
 # ══════════════════════════════════════════════════════════════════════════
 
-with tabs[5]:
+with tabs[6]:
     st.markdown("### Predictive Modeling")
     st.markdown("Evaluate → Select → Predict: benchmark all models first, "
                 "then train the best ones with the full binary-optimised pipeline.")
@@ -788,7 +920,7 @@ with tabs[5]:
 # TAB 7: AI INSIGHTS
 # ══════════════════════════════════════════════════════════════════════════
 
-with tabs[6]:
+with tabs[7]:
     st.markdown("### 💡 AI-Powered Deep Insights")
 
     if not api_key:

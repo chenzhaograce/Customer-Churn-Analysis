@@ -53,7 +53,9 @@ def _classify_columns(df, target_col, id_cols):
             continue
         if df[col].dtype in ("object", "category", "bool"):
             cat_cols.append(col)
-        elif df[col].nunique() <= 10:
+        elif pd.api.types.is_numeric_dtype(df[col]) and df[col].nunique() <= 2:
+            cat_cols.append(col)
+        elif pd.api.types.is_integer_dtype(df[col]) and df[col].nunique() <= 5:
             cat_cols.append(col)
         else:
             num_cols.append(col)
@@ -109,11 +111,11 @@ def load_from_sql(connection_string: str, query: str):
 
 
 @st.cache_data
-def preprocess_data(df):
+def preprocess_data(df, target_override=None):
     df = df.copy()
 
-    target_col = _detect_target(df)
-    if target_col is None:
+    target_col = target_override if target_override else _detect_target(df)
+    if target_col is None or target_col not in df.columns:
         st.error("Could not find a churn/target column. Make sure your data has a column "
                  "named 'Churn', 'churned', 'Exited', 'is_churned', 'target', or similar.")
         return None, {}
@@ -239,6 +241,60 @@ def get_churn_summary(df, num_cols):
         summary["avg_tenure_retained"] = df[df["Churn"] == "No"][tenure_col].mean()
 
     return summary
+
+
+def apply_column_overrides(df, meta, overrides, bin_config):
+    """Apply user column-type overrides and binning to the dataframe.
+
+    Args:
+        df: preprocessed dataframe (already has "Churn" as target)
+        meta: dict from preprocess_data
+        overrides: dict mapping col_name -> "cat" or "num"
+        bin_config: dict mapping col_name -> {"method": "quartile"} or
+                    {"method": "custom", "edges": [0, 2, 4, 6]}
+    Returns:
+        updated (df, cat_cols, num_cols)
+    """
+    df = df.copy()
+    cat_cols = list(meta["categorical_cols"])
+    num_cols = list(meta["numeric_cols"])
+
+    for col, col_type in overrides.items():
+        if col not in df.columns:
+            continue
+
+        was_cat = col in cat_cols
+        was_num = col in num_cols
+
+        if col_type == "cat" and was_num:
+            num_cols.remove(col)
+            cfg = bin_config.get(col)
+            if cfg:
+                if cfg["method"] == "quartile":
+                    df[col] = pd.qcut(df[col], q=4, duplicates="drop").astype(str)
+                elif cfg["method"] == "custom" and cfg.get("edges"):
+                    edges = sorted(cfg["edges"])
+                    mn, mx = df[col].min(), df[col].max()
+                    if edges[0] > mn:
+                        edges = [mn] + edges
+                    if edges[-1] < mx:
+                        edges = edges + [mx + 1]
+                    labels = [f"{edges[i]}-{edges[i+1]}"
+                              for i in range(len(edges) - 1)]
+                    df[col] = pd.cut(df[col], bins=edges, labels=labels,
+                                     include_lowest=True, right=False).astype(str)
+            else:
+                df[col] = df[col].astype(str)
+            cat_cols.append(col)
+
+        elif col_type == "num" and was_cat:
+            cat_cols.remove(col)
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            if df[col].isnull().any():
+                df[col].fillna(df[col].median(), inplace=True)
+            num_cols.append(col)
+
+    return df, cat_cols, num_cols
 
 
 def get_categorical_churn_rates(df, col):
