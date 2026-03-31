@@ -68,7 +68,8 @@ Refreshing the browser **does not** redeploy new code from GitHub or change the 
 1. **Confirm the latest commit** is on `main` (the app pulls from GitHub on each run, but a stale container can lag). In [share.streamlit.io](https://share.streamlit.io/) open your app → **⋮ Manage app** → check the build logs for the commit hash.
 2. **Reboot the app**: **Manage app** → **⋮** → **Reboot app** (forces a clean container and reinstall).
 3. **Python version**: Under **Manage app** → **Settings** → **Advanced settings**, set **Python** to **3.12** if you see errors with PyArrow or `st.dataframe` on **3.14** (Community Cloud may offer the newest Python before all libraries are fully aligned).
-4. **Clear session cache** (optional): in the running app, menu **☰** → **Clear cache**.
+4. **Health check / app won’t start**: `requirements.txt` constrains **XGBoost to 2.x** so pip does not pull CUDA stacks like `nvidia-nccl-cu12`, which can destabilize Streamlit Cloud’s **CPU-only** workers and lead to `/healthz` **connection reset**. After changing dependencies, reboot the app so the environment rebuilds.
+5. **Clear session cache** (optional): in the running app, menu **☰** → **Clear cache**.
 
 ### AI Insights (Optional)
 

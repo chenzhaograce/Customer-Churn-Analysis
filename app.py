@@ -35,11 +35,6 @@ from data_processor import (
     _detect_target, SAMPLE_DATASETS,
 )
 import charts
-from ml_models import (
-    get_available_models, get_available_models_with_categories,
-    get_category_for_model, train_and_evaluate, benchmark_models,
-    MODEL_CATEGORIES, DEFAULT_TOP_5,
-)
 from llm_insights import (
     get_executive_summary, get_categorical_insights, get_numerical_insights,
     get_model_insights, get_comprehensive_recommendations,
@@ -660,6 +655,12 @@ with tabs[5]:
 # ══════════════════════════════════════════════════════════════════════════
 
 with tabs[6]:
+    from ml_models import (
+        get_available_models_with_categories,
+        get_category_for_model, train_and_evaluate, benchmark_models,
+        MODEL_CATEGORIES, DEFAULT_TOP_5,
+    )
+
     st.markdown("### Predictive Modeling")
     st.markdown("Evaluate → Select → Predict: benchmark all models first, "
                 "then train the best ones with the full binary-optimised pipeline.")

@@ -20,23 +20,53 @@ from sklearn.metrics import (
     precision_recall_curve,
 )
 
-try:
-    from xgboost import XGBClassifier
-    HAS_XGBOOST = True
-except ImportError:
-    HAS_XGBOOST = False
+_SENTINEL = object()
+_XGBClassifier = _LGBMClassifier = _CatBoostClassifier = _SENTINEL
 
-try:
-    from lightgbm import LGBMClassifier
-    HAS_LIGHTGBM = True
-except ImportError:
-    HAS_LIGHTGBM = False
 
-try:
-    from catboost import CatBoostClassifier
-    HAS_CATBOOST = True
-except ImportError:
-    HAS_CATBOOST = False
+def _xgb_class():
+    global _XGBClassifier
+    if _XGBClassifier is _SENTINEL:
+        try:
+            from xgboost import XGBClassifier as _XC
+            _XGBClassifier = _XC
+        except ImportError:
+            _XGBClassifier = None
+    return _XGBClassifier
+
+
+def _lgbm_class():
+    global _LGBMClassifier
+    if _LGBMClassifier is _SENTINEL:
+        try:
+            from lightgbm import LGBMClassifier as _LC
+            _LGBMClassifier = _LC
+        except ImportError:
+            _LGBMClassifier = None
+    return _LGBMClassifier
+
+
+def _catboost_class():
+    global _CatBoostClassifier
+    if _CatBoostClassifier is _SENTINEL:
+        try:
+            from catboost import CatBoostClassifier as _CC
+            _CatBoostClassifier = _CC
+        except ImportError:
+            _CatBoostClassifier = None
+    return _CatBoostClassifier
+
+
+def _has_xgboost():
+    return _xgb_class() is not None
+
+
+def _has_lightgbm():
+    return _lgbm_class() is not None
+
+
+def _has_catboost():
+    return _catboost_class() is not None
 
 
 # ── MECE Model Taxonomy ───────────────────────────────────────────────────
@@ -104,26 +134,29 @@ def _build_registry(scale_pos_weight: float):
         ),
     }
 
-    if HAS_XGBOOST:
+    XC = _xgb_class()
+    if XC is not None:
         spw = scale_pos_weight
-        registry["XGBoost"] = lambda: XGBClassifier(
+        registry["XGBoost"] = lambda spw=spw, XC=XC: XC(
             n_estimators=200, max_depth=5, learning_rate=0.1,
             subsample=0.8, colsample_bytree=0.8,
             scale_pos_weight=spw,
             random_state=42, eval_metric="logloss", verbosity=0,
         )
 
-    if HAS_LIGHTGBM:
+    LC = _lgbm_class()
+    if LC is not None:
         spw = scale_pos_weight
-        registry["LightGBM"] = lambda: LGBMClassifier(
+        registry["LightGBM"] = lambda spw=spw, LC=LC: LC(
             n_estimators=200, max_depth=7, learning_rate=0.1,
             subsample=0.8, colsample_bytree=0.8,
             is_unbalance=True,
             random_state=42, verbosity=-1, force_col_wise=True,
         )
 
-    if HAS_CATBOOST:
-        registry["CatBoost"] = lambda: CatBoostClassifier(
+    CC = _catboost_class()
+    if CC is not None:
+        registry["CatBoost"] = lambda CC=CC: CC(
             iterations=200, depth=6, learning_rate=0.1,
             auto_class_weights="Balanced",
             random_state=42, verbose=0,
