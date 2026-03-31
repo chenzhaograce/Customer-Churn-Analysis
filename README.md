@@ -61,6 +61,15 @@ streamlit run app.py
 
 The app opens at `http://localhost:8501`.
 
+### Streamlit Community Cloud
+
+Refreshing the browser **does not** redeploy new code from GitHub or change the server’s Python version. If fixes do not appear:
+
+1. **Confirm the latest commit** is on `main` (the app pulls from GitHub on each run, but a stale container can lag). In [share.streamlit.io](https://share.streamlit.io/) open your app → **⋮ Manage app** → check the build logs for the commit hash.
+2. **Reboot the app**: **Manage app** → **⋮** → **Reboot app** (forces a clean container and reinstall).
+3. **Python version**: Under **Manage app** → **Settings** → **Advanced settings**, set **Python** to **3.12** if you see errors with PyArrow or `st.dataframe` on **3.14** (Community Cloud may offer the newest Python before all libraries are fully aligned).
+4. **Clear session cache** (optional): in the running app, menu **☰** → **Clear cache**.
+
 ### AI Insights (Optional)
 
 To enable AI-powered insights, enter your API key in the sidebar:

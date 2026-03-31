@@ -3,14 +3,28 @@ import pandas as pd
 import numpy as np
 
 
+def _arrow_cell_str(x) -> str:
+    if x is None:
+        return ""
+    try:
+        if pd.isna(x):
+            return ""
+    except (ValueError, TypeError):
+        pass
+    return str(x)
+
+
 def _arrow_safe_df(d: pd.DataFrame) -> pd.DataFrame:
-    """Stringify object columns so PyArrow/Streamlit can serialize (e.g. Python 3.14)."""
+    """Coerce columns PyArrow may reject on Streamlit Cloud (e.g. Python 3.14)."""
     if d is None or not isinstance(d, pd.DataFrame) or len(d) == 0:
         return d
     out = d.copy()
     for col in out.columns:
-        if out[col].dtype == object:
-            out[col] = out[col].map(lambda x: "" if pd.isna(x) else str(x))
+        s = out[col]
+        if s.dtype == object:
+            out[col] = s.map(_arrow_cell_str)
+        elif isinstance(s.dtype, pd.CategoricalDtype):
+            out[col] = s.astype(str)
     return out
 
 
@@ -358,7 +372,7 @@ with tabs[1]:
                     f'{df[df["Churn"]=="No"][col].mean():.2f}',
                 ))
         stats_df = pd.DataFrame(stat_rows, columns=["Metric", "Churned", "Retained"])
-        st.dataframe(stats_df, width="stretch", hide_index=True)
+        st.dataframe(_arrow_safe_df(stats_df), width="stretch", hide_index=True)
 
     with col4:
         st.markdown("#### Top Churn Drivers (by churn rate)")
@@ -375,7 +389,7 @@ with tabs[1]:
         if driver_data:
             driver_df = pd.DataFrame(driver_data)
             driver_df = driver_df.sort_values("Churn Rate", ascending=False).head(10)
-            st.dataframe(driver_df, width="stretch", hide_index=True)
+            st.dataframe(_arrow_safe_df(driver_df), width="stretch", hide_index=True)
 
     if api_key:
         st.markdown("---")
@@ -430,8 +444,10 @@ with tabs[2]:
 
     with sub2:
         st.markdown("**Numerical Summary**")
-        st.dataframe(df[num_cols].describe().round(2) if num_cols
-                     else pd.DataFrame(), width="stretch")
+        num_summary = (
+            df[num_cols].describe().round(2) if num_cols else pd.DataFrame()
+        )
+        st.dataframe(_arrow_safe_df(num_summary), width="stretch")
 
         st.markdown("**Categorical Summary**")
         cat_summary = []
@@ -894,7 +910,7 @@ with tabs[6]:
             st.markdown("#### Classification Reports")
             for name, report in reports.items():
                 with st.expander(f"📄 {name} ({get_category_for_model(name)})"):
-                    report_df = pd.DataFrame(report).T
+                    report_df = _arrow_safe_df(pd.DataFrame(report).T)
                     num_c = [c for c in report_df.columns
                              if report_df[c].dtype in ["float64", "float32"]]
                     st.dataframe(report_df.style.format("{:.3f}", subset=num_c),
