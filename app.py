@@ -2,6 +2,18 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
+
+def _arrow_safe_df(d: pd.DataFrame) -> pd.DataFrame:
+    """Stringify object columns so PyArrow/Streamlit can serialize (e.g. Python 3.14)."""
+    if d is None or not isinstance(d, pd.DataFrame) or len(d) == 0:
+        return d
+    out = d.copy()
+    for col in out.columns:
+        if out[col].dtype == object:
+            out[col] = out[col].map(lambda x: "" if pd.isna(x) else str(x))
+    return out
+
+
 from config import CUSTOM_CSS
 from data_processor import (
     load_data, load_from_sql, preprocess_data, get_encoded_data,
@@ -241,7 +253,7 @@ with tabs[0]:
 
     st.markdown("---")
 
-    if st.button("✅ Apply Settings", type="primary", use_container_width=True):
+    if st.button("✅ Apply Settings", type="primary", width="stretch"):
         settings_changed = (
             new_target != st.session_state.get("target_override", auto_target)
             or _new_overrides != st.session_state.get("col_overrides", {})
@@ -308,12 +320,12 @@ with tabs[1]:
     st.markdown("")
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.plotly_chart(charts.churn_donut(df), use_container_width=True, key="dash_donut")
+        st.plotly_chart(charts.churn_donut(df), width="stretch", key="dash_donut")
     with col2:
         if cat_cols:
             st.plotly_chart(
                 charts.churn_rate_by_category(df, cat_cols[0]),
-                use_container_width=True, key="dash_first_cat",
+                width="stretch", key="dash_first_cat",
             )
 
     st.markdown("---")
@@ -346,7 +358,7 @@ with tabs[1]:
                     f'{df[df["Churn"]=="No"][col].mean():.2f}',
                 ))
         stats_df = pd.DataFrame(stat_rows, columns=["Metric", "Churned", "Retained"])
-        st.dataframe(stats_df, use_container_width=True, hide_index=True)
+        st.dataframe(stats_df, width="stretch", hide_index=True)
 
     with col4:
         st.markdown("#### Top Churn Drivers (by churn rate)")
@@ -363,7 +375,7 @@ with tabs[1]:
         if driver_data:
             driver_df = pd.DataFrame(driver_data)
             driver_df = driver_df.sort_values("Churn Rate", ascending=False).head(10)
-            st.dataframe(driver_df, use_container_width=True, hide_index=True)
+            st.dataframe(driver_df, width="stretch", hide_index=True)
 
     if api_key:
         st.markdown("---")
@@ -393,16 +405,16 @@ with tabs[2]:
 
     with sub1:
         st.markdown(f"**Shape:** {df.shape[0]:,} rows × {df.shape[1]} columns")
-        st.dataframe(df.head(100), use_container_width=True, height=400)
+        st.dataframe(_arrow_safe_df(df.head(100)), width="stretch", height=400)
 
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown("**Data Types**")
-            st.dataframe(
-                pd.DataFrame(df.dtypes, columns=["Type"]).reset_index()
-                    .rename(columns={"index": "Column"}),
-                use_container_width=True, hide_index=True,
-            )
+            dtypes_df = pd.DataFrame({
+                "Column": df.columns.astype(str),
+                "Type": [str(t) for t in df.dtypes],
+            })
+            st.dataframe(dtypes_df, width="stretch", hide_index=True)
         with col_b:
             st.markdown("**Missing Values**")
             missing = df.isnull().sum()
@@ -413,13 +425,13 @@ with tabs[2]:
             st.dataframe(
                 missing_df[missing_df["Missing"] > 0] if missing.sum() > 0
                 else missing_df.head(10),
-                use_container_width=True, hide_index=True,
+                width="stretch", hide_index=True,
             )
 
     with sub2:
         st.markdown("**Numerical Summary**")
         st.dataframe(df[num_cols].describe().round(2) if num_cols
-                     else pd.DataFrame(), use_container_width=True)
+                     else pd.DataFrame(), width="stretch")
 
         st.markdown("**Categorical Summary**")
         cat_summary = []
@@ -428,12 +440,12 @@ with tabs[2]:
                 mode_val = df[col].mode().iloc[0]
                 cat_summary.append({
                     "Column": col,
-                    "Unique Values": df[col].nunique(),
-                    "Most Common": mode_val,
+                    "Unique Values": int(df[col].nunique()),
+                    "Most Common": str(mode_val),
                     "Most Common %": f"{(df[col] == mode_val).mean()*100:.1f}%",
                 })
         if cat_summary:
-            st.dataframe(pd.DataFrame(cat_summary), use_container_width=True,
+            st.dataframe(pd.DataFrame(cat_summary), width="stretch",
                          hide_index=True)
 
     with sub3:
@@ -442,14 +454,14 @@ with tabs[2]:
         sel_col = st.selectbox("Feature", all_features, key="explore_col")
         if sel_col in cat_cols:
             st.plotly_chart(charts.churn_by_category(df, sel_col),
-                            use_container_width=True, key="expl_cat")
+                            width="stretch", key="expl_cat")
             st.plotly_chart(charts.churn_rate_by_category(df, sel_col),
-                            use_container_width=True, key="expl_rate")
+                            width="stretch", key="expl_rate")
         else:
             st.plotly_chart(charts.numeric_distribution(df, sel_col),
-                            use_container_width=True, key="expl_hist")
+                            width="stretch", key="expl_hist")
             st.plotly_chart(charts.numeric_box(df, sel_col),
-                            use_container_width=True, key="expl_box")
+                            width="stretch", key="expl_box")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -467,14 +479,14 @@ with tabs[3]:
         st.plotly_chart(
             charts.categorical_grid(df, display_cats[:6],
                                     "Categorical Features vs Churn (Part 1)"),
-            use_container_width=True, key="cat_grid_1",
+            width="stretch", key="cat_grid_1",
         )
 
         if len(display_cats) > 6:
             st.plotly_chart(
                 charts.categorical_grid(df, display_cats[6:12],
                                         "Categorical Features vs Churn (Part 2)"),
-                use_container_width=True, key="cat_grid_2",
+                width="stretch", key="cat_grid_2",
             )
 
         st.markdown("---")
@@ -484,7 +496,7 @@ with tabs[3]:
             with rate_cols[i % 2]:
                 st.plotly_chart(
                     charts.churn_rate_by_category(df, col),
-                    use_container_width=True, key=f"cat_rate_{i}",
+                    width="stretch", key=f"cat_rate_{i}",
                 )
 
         # Auto-generated insight
@@ -541,7 +553,7 @@ with tabs[4]:
                 with row_cols[j]:
                     st.plotly_chart(
                         charts.numeric_distribution(df, col),
-                        use_container_width=True, key=f"num_dist_{i+j}",
+                        width="stretch", key=f"num_dist_{i+j}",
                     )
 
         if len(num_cols) >= 2:
@@ -555,7 +567,7 @@ with tabs[4]:
                                      index=min(1, len(num_cols) - 1), key="scatter_y")
             st.plotly_chart(
                 charts.numeric_scatter(df, x_col, y_col),
-                use_container_width=True, key="num_scatter",
+                width="stretch", key="num_scatter",
             )
 
         # Auto-generated insight
@@ -609,11 +621,11 @@ with tabs[5]:
 
     corr_bar = charts.churn_correlation_bar(df_encoded)
     if corr_bar:
-        st.plotly_chart(corr_bar, use_container_width=True, key="corr_bar")
+        st.plotly_chart(corr_bar, width="stretch", key="corr_bar")
 
     st.markdown("---")
     st.plotly_chart(charts.correlation_heatmap(df_encoded),
-                    use_container_width=True, key="corr_heatmap")
+                    width="stretch", key="corr_heatmap")
 
     st.markdown("---")
     st.markdown(
@@ -651,7 +663,7 @@ with tabs[6]:
         )
 
         if st.button("🔬 Run Benchmark (all models)", type="primary",
-                      use_container_width=True):
+                      width="stretch"):
             with st.spinner("Benchmarking all models with 5-fold CV — "
                             "this takes ~60 seconds..."):
                 bench_df = benchmark_models(df_encoded.to_json(), n_folds=5)
@@ -672,19 +684,19 @@ with tabs[6]:
                     .highlight_max(axis=0,
                                    subset=["ROC-AUC", "F1", "PR-AUC", "Composite"],
                                    color="#d4edda"),
-                use_container_width=True,
+                width="stretch",
             )
 
             bc1, bc2 = st.columns(2)
             with bc1:
                 st.plotly_chart(
                     charts.benchmark_ranking_chart(bench_df, top_n=5),
-                    use_container_width=True, key="bench_rank",
+                    width="stretch", key="bench_rank",
                 )
             with bc2:
                 st.plotly_chart(
                     charts.benchmark_metrics_chart(bench_df),
-                    use_container_width=True, key="bench_metrics",
+                    width="stretch", key="bench_metrics",
                 )
 
             st.markdown(
@@ -740,7 +752,7 @@ with tabs[6]:
         )
 
         if selected_models and st.button("🚀 Train Selected Models", type="primary",
-                                         use_container_width=True):
+                                         width="stretch"):
             with st.spinner("Training models with class-weight balancing..."):
                 result = train_and_evaluate(
                     df_encoded.to_json(), selected_models, test_size,
@@ -803,10 +815,10 @@ with tabs[6]:
                     .format("{:.4f}", subset=metric_cols)
                     .highlight_max(axis=0, subset=metric_cols, color="#d4edda")
                     .highlight_min(axis=0, subset=metric_cols, color="#f8d7da"),
-                use_container_width=True,
+                width="stretch",
             )
             st.plotly_chart(charts.model_comparison_chart(results),
-                            use_container_width=True, key="ml_compare")
+                            width="stretch", key="ml_compare")
 
             st.markdown("---")
             st.markdown("#### Discrimination Curves")
@@ -815,12 +827,12 @@ with tabs[6]:
                 roc_fixed = [(n, np.array(f), np.array(t), a)
                              for n, f, t, a in roc_data]
                 st.plotly_chart(charts.roc_curves_chart(roc_fixed),
-                                use_container_width=True, key="ml_roc")
+                                width="stretch", key="ml_roc")
             with curve_c2:
                 pr_fixed = [(n, np.array(p), np.array(r), a)
                             for n, p, r, a in pr_data]
                 st.plotly_chart(charts.pr_curves_chart(pr_fixed),
-                                use_container_width=True, key="ml_pr")
+                                width="stretch", key="ml_pr")
 
             st.markdown(
                 '<div class="insight-box">'
@@ -839,7 +851,7 @@ with tabs[6]:
 
             st.plotly_chart(
                 charts.threshold_comparison_chart(threshold_info),
-                use_container_width=True, key="ml_thresh_cmp",
+                width="stretch", key="ml_thresh_cmp",
             )
 
             sel_thresh = st.selectbox("Inspect threshold detail:",
@@ -852,14 +864,14 @@ with tabs[6]:
                     st.plotly_chart(
                         charts.threshold_analysis_chart(
                             ti["y_true"], ti["y_prob"], sel_thresh),
-                        use_container_width=True, key="ml_thresh_detail",
+                        width="stretch", key="ml_thresh_detail",
                     )
                 with tc2:
                     st.plotly_chart(
                         charts.probability_distribution_chart(
                             ti["y_true"], ti["y_prob"], sel_thresh,
                             ti["optimal"]),
-                        use_container_width=True, key="ml_prob_dist",
+                        width="stretch", key="ml_prob_dist",
                     )
 
             st.markdown("---")
@@ -874,7 +886,7 @@ with tabs[6]:
                     with cm_row[i]:
                         st.plotly_chart(
                             charts.confusion_matrix_chart(np.array(cm), name),
-                            use_container_width=True,
+                            width="stretch",
                             key=f"ml_cm_{row_start + i}",
                         )
 
@@ -886,7 +898,7 @@ with tabs[6]:
                     num_c = [c for c in report_df.columns
                              if report_df[c].dtype in ["float64", "float32"]]
                     st.dataframe(report_df.style.format("{:.3f}", subset=num_c),
-                                 use_container_width=True)
+                                 width="stretch")
 
             if feature_importances:
                 st.markdown("---")
@@ -897,7 +909,7 @@ with tabs[6]:
                         st.plotly_chart(
                             charts.feature_importance_chart(
                                 imps, feature_names, name),
-                            use_container_width=True, key=f"ml_fi_{i}",
+                            width="stretch", key=f"ml_fi_{i}",
                         )
 
             if api_key:
