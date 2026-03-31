@@ -3,8 +3,9 @@ pandas>=2.0.0
 numpy>=1.24.0
 plotly>=5.18.0
 scikit-learn>=1.3.0
-# XGBoost 3.x pulls CUDA deps (e.g. nvidia-nccl-cu12) that can break Streamlit Cloud (CPU-only).
-xgboost>=2.0.0,<3.0.0
+# XGBoost 3.x pulls CUDA stacks; 2.1+ on Linux declares nvidia-nccl-cu12 as a required dep on PyPI.
+# Stay on 2.0.x for Streamlit Cloud (CPU-only) so uv does not install NCCL.
+xgboost>=2.0.0,<2.1.0
 lightgbm>=4.0.0
 catboost>=1.2.0
 openai>=1.0.0
