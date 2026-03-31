@@ -55,11 +55,22 @@ pip install -r requirements.txt
 
 ### Run
 
+From the project directory:
+
 ```bash
 streamlit run app.py
 ```
 
 The app opens at `http://localhost:8501`.
+
+**Important:** start the app with **`streamlit run app.py`**, not `python app.py`. Running the file with plain Python does not start Streamlit’s server, so the browser will show nothing useful or you will see “missing ScriptRunContext” warnings.
+
+If something fails locally:
+
+1. Run **`python check_env.py`** (uses the same Python you run Streamlit with). It prints which imports are broken.
+2. Install deps: **`pip install -r requirements.txt`** (or `python -m pip install -r requirements.txt`).
+3. If **`Address already in use`**, pick another port: **`streamlit run app.py --server.port 8502`**.
+4. Copy the **full traceback** from the terminal (or the red box in the browser) when asking for help.
 
 ### Streamlit Community Cloud
 
